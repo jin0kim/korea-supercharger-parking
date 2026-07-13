@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>슈퍼차저 정보 관리 · 편집</title>
+<style>
+  :root{--bg:#f4f6f9;--panel:#fff;--panel2:#eef1f5;--line:#e2e6ec;--txt:#1a1d23;--muted:#69707c;--accent:#e82127;--ok:#12a150}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Apple SD Gothic Neo","Malgun Gothic",Pretendard,system-ui,sans-serif;background:var(--bg);color:var(--txt)}
+  header{background:var(--panel);border-bottom:1px solid var(--line);padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:sticky;top:0;z-index:10}
+  header h1{font-size:16px;margin:0;font-weight:800}
+  header .badge{background:#111;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px}
+  header .sp{flex:1}
+  .btn{border:1px solid var(--line);background:var(--panel);color:var(--txt);padding:9px 14px;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn.ok{background:var(--ok);color:#fff;border-color:var(--ok)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .status{font-size:13px;color:var(--muted)}
+  .status.good{color:var(--ok);font-weight:700}
+  .status.bad{color:var(--accent);font-weight:700}
+
+  /* 게이트 */
+  #gate{max-width:420px;margin:80px auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px;text-align:center}
+  #gate h2{margin:0 0 6px;font-size:18px}
+  #gate p{color:var(--muted);font-size:13px;line-height:1.6;margin:0 0 16px}
+  #gate input{width:100%;padding:11px;border:1px solid var(--line);border-radius:9px;font-size:15px;margin-bottom:10px}
+
+  main{display:none;max-width:1200px;margin:0 auto;padding:14px;gap:14px;grid-template-columns:320px 1fr}
+  main.on{display:grid}
+  @media(max-width:800px){ main.on{grid-template-columns:1fr} }
+  .listcol{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;height:calc(100vh - 110px);display:flex;flex-direction:column}
+  .listcol input.search{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;font-size:14px;margin-bottom:8px}
+  .items{overflow-y:auto;flex:1}
+  .item{padding:9px 10px;border-radius:8px;cursor:pointer;font-size:14px;border:1px solid transparent}
+  .item:hover{background:var(--panel2)}
+  .item.sel{background:#fdecec;border-color:#f4c7c9}
+  .item .rg{font-size:11px;color:var(--muted)}
+
+  .editcol{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;height:calc(100vh - 110px);overflow-y:auto}
+  .editcol .empty{color:var(--muted);text-align:center;padding:60px 10px}
+  .grp{margin-bottom:14px}
+  .grp h3{font-size:12px;color:var(--muted);font-weight:800;letter-spacing:.3px;margin:0 0 8px;text-transform:uppercase}
+  .field{margin-bottom:10px}
+  .field label{display:block;font-size:12px;color:var(--muted);font-weight:700;margin-bottom:3px}
+  .field input,.field select,.field textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;background:#fff}
+  .field textarea{min-height:60px;resize:vertical;line-height:1.5}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .editbar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+  .editbar .nm{font-weight:800;font-size:16px;flex:1}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h2>🔒 관리자 인증</h2>
+  <p>수정·추가·삭제하려면 관리자 토큰을 입력하세요.<br>(Vercel 환경변수 <b>ADMIN_TOKEN</b> 값)</p>
+  <input id="tokenInput" type="password" placeholder="관리자 토큰" autocomplete="current-password">
+  <button class="btn primary" style="width:100%" onclick="enter()">입장</button>
+  <div class="status" id="gateStatus" style="margin-top:10px"></div>
+</div>
+
+<header id="hdr" style="display:none">
+  <span class="badge">ADMIN</span>
+  <h1>슈퍼차저 정보 관리</h1>
+  <span class="status" id="dataSrc"></span>
+  <span class="sp"></span>
+  <span class="status" id="saveStatus"></span>
+  <button class="btn" onclick="addNew()">+ 새 슈퍼차저</button>
+  <button class="btn ok" id="saveBtn" onclick="saveAll()">💾 전체 저장</button>
+  <a class="btn" href="/" target="_blank">사이트 보기</a>
+</header>
+
+<main id="main">
+  <div class="listcol">
+    <input class="search" id="search" placeholder="🔍 검색">
+    <div class="items" id="items"></div>
+  </div>
+  <div class="editcol" id="editcol"><div class="empty">왼쪽에서 항목을 선택하거나 “+ 새 슈퍼차저”를 누르세요.</div></div>
+</main>
+
+<script>
+const BUCKETS = ["완전무료","30분 이상","15~20분","10분 이하","회차 없음","기타"];
+const REGIONS = ["서울 강북","서울 강남","경기 북부","인천","경기 남부","강원도","충청북도","충청남도","경상북도","경상남도","전라북도","전라남도","제주도"];
+let DATA = [], selId = null, token = '', dirty = false;
+
+const FIELDS = [
+  {g:"기본", items:[
+    {k:"name",label:"이름",type:"text"},
+    {k:"region",label:"지역",type:"select",opts:REGIONS},
+    {k:"speed",label:"충전속도",type:"text"},
+    {k:"stalls",label:"스톨 수",type:"number"},
+    {k:"location",label:"진입 위치",type:"text"},
+    {k:"nearby",label:"주변시설",type:"text"},
+  ]},
+  {g:"주차정보", items:[
+    {k:"grace_label",label:"무료회차 표기 (예: 30분)",type:"text"},
+    {k:"grace_min",label:"무료회차(분, 정렬용 / 완전무료는 -1)",type:"number"},
+    {k:"grace_bucket",label:"무료회차 구간",type:"select",opts:BUCKETS},
+    {k:"fee_after",label:"이후 요금",type:"text"},
+    {k:"daily_max",label:"일 최대",type:"text"},
+    {k:"free_cond",label:"무료주차 조건",type:"textarea"},
+    {k:"parking",label:"원본 주차 문구 (전체)",type:"textarea"},
+  ]},
+  {g:"평점 (0~10)", items:[
+    {k:"rating",label:"총평점",type:"number"},
+    {k:"r_facility",label:"주변시설",type:"number"},
+    {k:"r_access",label:"접근성",type:"number"},
+    {k:"r_pdiff",label:"주차 난이도",type:"number"},
+    {k:"r_pcost",label:"주차 비용",type:"number"},
+    {k:"r_charger",label:"슈퍼차저 점수",type:"number"},
+  ]},
+  {g:"링크 / 좌표 / 메모", items:[
+    {k:"location_url",label:"진입 영상 URL",type:"text"},
+    {k:"nearby_url",label:"주변시설 영상 URL",type:"text"},
+    {k:"lat",label:"위도(lat)",type:"number"},
+    {k:"lng",label:"경도(lng)",type:"number"},
+    {k:"note",label:"코멘트",type:"textarea"},
+  ]},
+];
+
+function setStatus(el,msg,cls){ const e=document.getElementById(el); e.textContent=msg; e.className='status'+(cls?' '+cls:''); }
+
+async function enter(){
+  token = document.getElementById('tokenInput').value.trim();
+  if(!token){ setStatus('gateStatus','토큰을 입력하세요.','bad'); return; }
+  setStatus('gateStatus','확인 중…');
+  await loadData();
+  // 저장 권한은 실제 저장 시 검증됨. 여기선 데이터만 로드하고 입장.
+  document.getElementById('gate').style.display='none';
+  document.getElementById('hdr').style.display='flex';
+  document.getElementById('main').classList.add('on');
+  renderList();
+}
+
+async function loadData(){
+  try{
+    const r = await fetch('/api/chargers');
+    const j = await r.json();
+    if(j.configured && Array.isArray(j.data) && j.data.length){
+      DATA = j.data; setStatus('dataSrc','DB에서 불러옴 ('+DATA.length+'곳)'); return;
+    }
+  }catch(e){}
+  // 시드: 정적 data.json
+  try{
+    const r = await fetch('/data.json'); DATA = await r.json();
+    setStatus('dataSrc','초기 데이터(data.json) '+DATA.length+'곳 · 첫 저장 시 DB에 기록됩니다');
+  }catch(e){ DATA=[]; setStatus('dataSrc','데이터 없음','bad'); }
+}
+
+function renderList(){
+  const q=(document.getElementById('search').value||'').toLowerCase();
+  const box=document.getElementById('items');
+  const arr=DATA.filter(d=>!q || (d.name+' '+d.region).toLowerCase().includes(q));
+  box.innerHTML=arr.map(d=>`<div class="item ${d.id===selId?'sel':''}" onclick="select(${d.id})">
+    <div>${esc(d.name||'(이름없음)')}</div><div class="rg">${esc(d.region||'')}</div></div>`).join('')
+    || '<div class="empty" style="color:#69707c;padding:20px">결과 없음</div>';
+}
+document.getElementById('search').oninput=renderList;
+
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));}
+
+function select(id){ selId=id; renderList(); renderEdit(); }
+
+function renderEdit(){
+  const d=DATA.find(x=>x.id===selId);
+  const col=document.getElementById('editcol');
+  if(!d){ col.innerHTML='<div class="empty">선택된 항목이 없습니다.</div>'; return; }
+  let html=`<div class="editbar"><span class="nm">${esc(d.name||'(새 항목)')}</span>
+    <button class="btn" onclick="delItem(${d.id})" style="color:#e82127">🗑 삭제</button></div>`;
+  FIELDS.forEach(grp=>{
+    html+=`<div class="grp"><h3>${grp.g}</h3>`;
+    grp.items.forEach(f=>{
+      const v=d[f.k]==null?'':d[f.k];
+      if(f.type==='textarea'){
+        html+=`<div class="field"><label>${f.label}</label><textarea data-k="${f.k}" oninput="upd(${d.id},'${f.k}',this.value)">${esc(v)}</textarea></div>`;
+      }else if(f.type==='select'){
+        html+=`<div class="field"><label>${f.label}</label><select data-k="${f.k}" onchange="upd(${d.id},'${f.k}',this.value)">`+
+          f.opts.map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')+`</select></div>`;
+      }else{
+        const t=f.type==='number'?'number':'text';
+        html+=`<div class="field"><label>${f.label}</label><input type="${t}" step="any" value="${esc(v)}" oninput="upd(${d.id},'${f.k}',this.value,${f.type==='number'})"></div>`;
+      }
+    });
+    html+=`</div>`;
+  });
+  col.innerHTML=html;
+}
+
+function upd(id,k,val,isNum){
+  const d=DATA.find(x=>x.id===id); if(!d) return;
+  d[k] = isNum ? (val===''?null:Number(val)) : val;
+  dirty=true; markDirty();
+  if(k==='name'||k==='region'){ renderList(); document.querySelector('.editbar .nm').textContent=d.name||'(새 항목)'; }
+}
+
+function markDirty(){ setStatus('saveStatus','● 저장 안 됨','bad'); }
+
+function addNew(){
+  const id=(DATA.reduce((m,d)=>Math.max(m,d.id||0),0))+1;
+  const d={id,region:REGIONS[0],name:'새 슈퍼차저',speed:'250kW',stalls:null,location:'',nearby:'',
+    parking:'',grace_label:'',grace_min:null,grace_bucket:'기타',fee_after:'',daily_max:'',free_cond:'',
+    rating:null,r_facility:null,r_access:null,r_pdiff:null,r_pcost:null,r_charger:null,
+    location_url:'',nearby_url:'',lat:36.5,lng:127.8,note:'',coord_src:'manual'};
+  DATA.push(d); selId=id; dirty=true; markDirty(); renderList(); renderEdit();
+  document.getElementById('search').value='';
+}
+
+function delItem(id){
+  if(!confirm('이 항목을 삭제할까요? (저장 눌러야 실제 반영)')) return;
+  DATA=DATA.filter(x=>x.id!==id); if(selId===id) selId=null;
+  dirty=true; markDirty(); renderList(); renderEdit();
+}
+
+async function saveAll(){
+  const btn=document.getElementById('saveBtn'); btn.disabled=true;
+  setStatus('saveStatus','저장 중…');
+  try{
+    const r=await fetch('/api/chargers',{method:'PUT',
+      headers:{'Content-Type':'application/json','x-admin-token':token},
+      body:JSON.stringify(DATA)});
+    const j=await r.json();
+    if(r.ok && j.ok){ dirty=false; setStatus('saveStatus','✔ 저장됨 ('+j.count+'곳) · 사이트에 즉시 반영','good'); }
+    else setStatus('saveStatus','실패: '+(j.error||r.status),'bad');
+  }catch(e){ setStatus('saveStatus','오류: '+e.message,'bad'); }
+  btn.disabled=false;
+}
+
+window.addEventListener('beforeunload',e=>{ if(dirty){ e.preventDefault(); e.returnValue=''; }});
+document.getElementById('tokenInput').addEventListener('keydown',e=>{ if(e.key==='Enter') enter(); });
+</script>
+</body>
+</html>

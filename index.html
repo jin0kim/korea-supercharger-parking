@@ -109,6 +109,7 @@
     <span class="badge">SUPERCHARGER</span>
     <h1>전국 테슬라 슈퍼차저 · 주차정보</h1>
     <span class="count" id="count"></span>
+    <a href="/admin.html" title="정보 편집" style="font-size:12px;color:var(--muted);text-decoration:none;margin-left:10px">✎ 편집</a>
   </div>
   <div class="controls">
     <div class="searchrow">
@@ -135,7 +136,7 @@
 <script src="data.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const DATA = window.CHARGERS || [];
+let DATA = window.CHARGERS || [];
 const BUCKETS = {
   "완전무료":{hex:"#12a150"},"30분 이상":{hex:"#2f9e44"},"15~20분":{hex:"#e0a213"},
   "10분 이하":{hex:"#ef7c14"},"회차 없음":{hex:"#e5484d"},"기타":{hex:"#8b98a9"},
@@ -204,13 +205,19 @@ function popupHtml(d){
     '</div>';
 }
 
-DATA.forEach(d=>{
-  const b=BUCKETS[d.grace_bucket]||BUCKETS["기타"];
-  const m=L.circleMarker([d.lat,d.lng],{radius:6,color:'#fff',weight:1.5,fillColor:b.hex,fillOpacity:.95});
-  m.bindPopup(popupHtml(d),{maxWidth:320});
-  m.on('click',()=>highlightCard(d.id));
-  markers[d.id]=m;
-});
+function buildMarkers(){
+  Object.values(markers).forEach(m=>{ if(map.hasLayer(m)) map.removeLayer(m); });
+  for(const k in markers) delete markers[k];
+  DATA.forEach(d=>{
+    if(d.lat==null||d.lng==null) return;
+    const b=BUCKETS[d.grace_bucket]||BUCKETS["기타"];
+    const m=L.circleMarker([d.lat,d.lng],{radius:6,color:'#fff',weight:1.5,fillColor:b.hex,fillOpacity:.95});
+    m.bindPopup(popupHtml(d),{maxWidth:320});
+    m.on('click',()=>highlightCard(d.id));
+    markers[d.id]=m;
+  });
+}
+buildMarkers();
 
 function filtered(){
   let arr=DATA.filter(d=>{
@@ -283,6 +290,19 @@ function render(){
   });
 }
 render();
+
+// DB(API)에서 최신 데이터가 있으면 교체
+(async ()=>{
+  try{
+    const r=await fetch('/api/chargers',{cache:'no-store'});
+    if(r.ok){
+      const j=await r.json();
+      if(j && j.configured && Array.isArray(j.data) && j.data.length){
+        DATA=j.data; buildMarkers(); render();
+      }
+    }
+  }catch(e){/* API 없으면 정적 data.js 사용 */}
+})();
 </script>
 </body>
 </html>
