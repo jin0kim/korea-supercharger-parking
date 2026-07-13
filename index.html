@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<title>전국 테슬라 슈퍼차저 · 주차정보 지도</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  :root{
+    --bg:#f4f6f9; --panel:#ffffff; --panel2:#eef1f5; --line:#e2e6ec;
+    --txt:#1a1d23; --muted:#69707c; --accent:#e82127;
+    --free:#12a150; --long:#2f9e44; --mid:#e0a213; --short:#ef7c14; --none:#e5484d; --etc:#8b98a9;
+    --good:#2f9e44; --avg:#e0a213; --bad:#e5484d;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:"Apple SD Gothic Neo","Malgun Gothic",Pretendard,system-ui,sans-serif;background:var(--bg);color:var(--txt);-webkit-text-size-adjust:100%}
+  header{padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:1000;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+  .title{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .title h1{font-size:17px;margin:0;font-weight:800;letter-spacing:-.3px}
+  .title .badge{background:var(--accent);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px}
+  .title .count{color:var(--muted);font-size:13px;margin-left:auto}
+  .controls{margin-top:11px;display:flex;flex-direction:column;gap:9px}
+  .searchrow{display:flex;gap:8px;flex-wrap:wrap}
+  #search{flex:1;min-width:180px;background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:11px 12px;border-radius:10px;font-size:15px;outline:none}
+  #search:focus{border-color:var(--accent)}
+  #sort{background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:11px 10px;border-radius:10px;font-size:14px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;overflow-x:auto}
+  .chiplabel{font-size:11px;color:var(--muted);margin-right:2px;font-weight:700;flex-shrink:0}
+  .chip{background:var(--panel);border:1px solid var(--line);color:var(--muted);padding:6px 12px;border-radius:20px;font-size:13px;cursor:pointer;user-select:none;transition:.12s;white-space:nowrap}
+  .chip:hover{color:var(--txt);border-color:#c4ccd6}
+  .chip.on{background:var(--txt);color:#fff;border-color:var(--txt);font-weight:700}
+  .chip .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
+  .viewtoggle{display:none;gap:0;margin-top:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .viewtoggle button{flex:1;background:var(--panel);border:none;color:var(--muted);padding:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .viewtoggle button.on{background:var(--accent);color:#fff}
+
+  main{display:flex;height:calc(100vh - 176px);min-height:420px}
+  #map{flex:1.15;min-width:0}
+  #list{flex:1;overflow-y:auto;background:var(--bg);border-left:1px solid var(--line);padding:12px;-webkit-overflow-scrolling:touch}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 12px;margin-bottom:9px;cursor:pointer;transition:.12s;border-left-width:6px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  .card:hover{box-shadow:0 3px 10px rgba(0,0,0,.09)}
+  .card.active{outline:2px solid var(--accent)}
+  .card .top{display:flex;align-items:baseline;gap:8px}
+  .card .nm{font-weight:800;font-size:16px;letter-spacing:-.2px}
+  .card .rg{font-size:11px;color:var(--muted);background:var(--panel2);padding:3px 8px;border-radius:6px;white-space:nowrap;margin-left:auto}
+
+  .parkbox{margin-top:8px;background:var(--panel2);border-radius:9px;padding:8px 10px}
+  .grace{display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap}
+  .grace .lab{font-size:11px;color:var(--muted);font-weight:700}
+  .grace .val{font-size:22px;font-weight:800;letter-spacing:-.5px}
+  .grace .tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;color:#fff}
+  .pk{font-size:13px;color:#3c4250;line-height:1.55}
+  .pkrow{display:flex;gap:8px;padding:2px 0;border-top:1px dashed var(--line)}
+  .pkrow:first-child{border-top:none}
+  .pkrow .k{color:var(--muted);min-width:60px;flex-shrink:0;font-size:12px;padding-top:1px}
+  .pkrow .v{color:var(--txt);font-weight:600}
+
+  .specs{margin-top:8px;display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+  .spec{background:var(--panel2);border-radius:8px;padding:6px 9px;display:flex;flex-direction:column;gap:1px}
+  .spec.wide{grid-column:1 / -1}
+  .spec .sk{font-size:10.5px;color:var(--muted);font-weight:700;letter-spacing:.2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .spec .sv{font-size:14px;font-weight:700}
+  .vlink{font-size:11px;font-weight:700;color:#fff;background:var(--accent);padding:1px 7px;border-radius:20px;text-decoration:none;white-space:nowrap}
+  .vlink:hover{background:#c81a1f}
+  .pop .pvlinks{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+  .pop .pvlinks a{font-size:12px;font-weight:700;color:#fff;background:#e82127;padding:4px 10px;border-radius:20px;text-decoration:none}
+
+  /* 평점 박스 */
+  .rate{margin-top:8px;background:var(--panel2);border-radius:9px;padding:8px 10px;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+  .rate .rk{font-size:11px;color:var(--muted);font-weight:700}
+  .rate .rbig{font-size:22px;font-weight:800;letter-spacing:-.5px}
+  .rate .rmax{font-size:12px;color:var(--muted);font-weight:600}
+  .rate .rsub{font-size:13px;color:var(--muted);line-height:1.5}
+  .rate .rsub b{color:var(--txt);font-weight:700}
+  .rate .sep{margin:0 4px;color:#c4ccd6}
+
+  .note{margin-top:8px;background:#fff8e6;border:1px solid #f2e3b0;border-radius:9px;padding:8px 10px}
+  .note .nk{font-size:11px;color:#a67c00;font-weight:800;margin-bottom:2px;letter-spacing:.3px}
+  .note .nv{font-size:14px;color:#5b4a12;line-height:1.65}
+
+  .empty{color:var(--muted);text-align:center;padding:40px 10px;font-size:14px}
+
+  .leaflet-popup-content{margin:13px 15px;font-family:inherit}
+  .pop .pnm{font-weight:800;font-size:15px;margin-bottom:2px;color:#1a1d23}
+  .pop .prg{font-size:11px;color:#888;margin-bottom:8px}
+  .pop .pg{font-size:19px;font-weight:800;margin:6px 0}
+  .pop .pk2{font-size:13px;color:#333;line-height:1.55}
+  .pop .pk2 b{color:#000}
+  .pop .pnote{margin-top:7px;font-size:13px;color:#5b4a12;background:#fff8e6;border-radius:7px;padding:7px 9px;line-height:1.6}
+
+  @media(max-width:820px){
+    header{padding:10px 12px}
+    .title h1{font-size:15px}
+    .viewtoggle{display:flex}
+    main{flex-direction:column;height:calc(100vh - 214px)}
+    #map,#list{border:none}
+    #list{border-top:1px solid var(--line);padding:10px}
+    body.mv-map #list{display:none}
+    body.mv-map #map{flex:1}
+    body.mv-list #map{display:none}
+    body.mv-list #list{flex:1}
+    .specs{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+</head>
+<body class="mv-list">
+<header>
+  <div class="title">
+    <span class="badge">SUPERCHARGER</span>
+    <h1>전국 테슬라 슈퍼차저 · 주차정보</h1>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="controls">
+    <div class="searchrow">
+      <input id="search" placeholder="🔍 이름·지역·주변시설 검색">
+      <select id="sort">
+        <option value="graceDesc">무료회차 긴 순</option>
+        <option value="graceAsc">무료회차 짧은 순</option>
+        <option value="rating">총평점 높은 순</option>
+        <option value="region">지역순</option>
+      </select>
+    </div>
+    <div class="chips" id="regionChips"><span class="chiplabel">지역</span></div>
+    <div class="chips" id="graceChips"><span class="chiplabel">무료회차</span></div>
+    <div class="viewtoggle" id="viewtoggle">
+      <button data-v="list" class="on">📋 목록</button>
+      <button data-v="map">🗺️ 지도</button>
+    </div>
+  </div>
+</header>
+<main>
+  <div id="map"></div>
+  <div id="list"></div>
+</main>
+<script src="data.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const DATA = window.CHARGERS || [];
+const BUCKETS = {
+  "완전무료":{hex:"#12a150"},"30분 이상":{hex:"#2f9e44"},"15~20분":{hex:"#e0a213"},
+  "10분 이하":{hex:"#ef7c14"},"회차 없음":{hex:"#e5484d"},"기타":{hex:"#8b98a9"},
+};
+const BUCKET_ORDER = ["완전무료","30분 이상","15~20분","10분 이하","회차 없음","기타"];
+const SUBR = [["r_facility","주변시설"],["r_access","접근성"],["r_pdiff","주차 난이도"],["r_pcost","주차 비용"],["r_charger","슈퍼차저"]];
+const regions = [];
+DATA.forEach(d=>{ if(!regions.includes(d.region)) regions.push(d.region); });
+
+let fRegion="전체", fGrace="전체", q="", sortBy="graceDesc";
+
+const rc=document.getElementById('regionChips');
+["전체",...regions].forEach(r=>{
+  const el=document.createElement('span'); el.className='chip'+(r==="전체"?' on':''); el.textContent=r;
+  el.onclick=()=>{ fRegion=r; [...rc.querySelectorAll('.chip')].forEach(c=>c.classList.toggle('on',c.textContent===r)); render(); };
+  rc.appendChild(el);
+});
+const gc=document.getElementById('graceChips');
+["전체",...BUCKET_ORDER].forEach(b=>{
+  const el=document.createElement('span'); el.className='chip'+(b==="전체"?' on':'');
+  if(b!=="전체") el.innerHTML='<span class="dot" style="background:'+BUCKETS[b].hex+'"></span>'+b; else el.textContent="전체";
+  el.dataset.v=b;
+  el.onclick=()=>{ fGrace=b; [...gc.querySelectorAll('.chip')].forEach(c=>c.classList.toggle('on',c.dataset.v===b)); render(); };
+  gc.appendChild(el);
+});
+document.getElementById('search').oninput=e=>{ q=e.target.value.trim().toLowerCase(); render(); };
+document.getElementById('sort').onchange=e=>{ sortBy=e.target.value; render(); };
+
+// 모바일 뷰 토글
+const vt=document.getElementById('viewtoggle');
+vt.querySelectorAll('button').forEach(btn=>{
+  btn.onclick=()=>{
+    vt.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===btn));
+    document.body.className = btn.dataset.v==='map' ? 'mv-map' : 'mv-list';
+    if(btn.dataset.v==='map') setTimeout(()=>map.invalidateSize(),120);
+  };
+});
+
+const map=L.map('map',{zoomControl:true}).setView([36.4,127.8],7);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+  attribution:'&copy; OpenStreetMap &copy; CARTO', maxZoom:19, subdomains:'abcd'
+}).addTo(map);
+const markers={};
+
+function graceSortVal(d){ return d.grace_bucket==="완전무료"?100000:(d.grace_min==null?-1:d.grace_min); }
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));}
+function rateColor(v){ if(v==null) return '#c4ccd6'; if(v>=7) return 'var(--good)'; if(v>=4) return 'var(--avg)'; return 'var(--bad)'; }
+
+function popupHtml(d){
+  const b=BUCKETS[d.grace_bucket]||BUCKETS["기타"];
+  return '<div class="pop"><div class="pnm">'+esc(d.name)+'</div>'+
+    '<div class="prg">'+esc(d.region)+' · '+esc(d.speed||'')+(d.stalls?' · '+d.stalls+'기':'')+(d.rating!=null?' · ⭐'+d.rating.toFixed(1):'')+'</div>'+
+    '<div class="pg" style="color:'+b.hex+'">무료회차 '+esc(d.grace_label)+'</div>'+
+    '<div class="pk2">'+
+      (d.fee_after?'<div><b>이후요금</b> '+esc(d.fee_after)+'</div>':'')+
+      (d.daily_max?'<div><b>일최대</b> '+esc(d.daily_max)+'</div>':'')+
+      (d.free_cond?'<div><b>무료조건</b> '+esc(d.free_cond)+'</div>':'')+
+      (d.location?'<div><b>진입</b> '+esc(d.location)+'</div>':'')+
+      (d.nearby?'<div><b>주변</b> '+esc(d.nearby)+'</div>':'')+
+    '</div>'+
+    (d.note?'<div class="pnote">💬 '+esc(d.note)+'</div>':'')+
+    ((d.location_url||d.nearby_url)?'<div class="pvlinks">'+
+      (d.location_url?'<a href="'+esc(d.location_url)+'" target="_blank" rel="noopener">▶ 진입영상</a>':'')+
+      (d.nearby_url?'<a href="'+esc(d.nearby_url)+'" target="_blank" rel="noopener">▶ 주변영상</a>':'')+
+    '</div>':'')+
+    '</div>';
+}
+
+DATA.forEach(d=>{
+  const b=BUCKETS[d.grace_bucket]||BUCKETS["기타"];
+  const m=L.circleMarker([d.lat,d.lng],{radius:6,color:'#fff',weight:1.5,fillColor:b.hex,fillOpacity:.95});
+  m.bindPopup(popupHtml(d),{maxWidth:320});
+  m.on('click',()=>highlightCard(d.id));
+  markers[d.id]=m;
+});
+
+function filtered(){
+  let arr=DATA.filter(d=>{
+    if(fRegion!=="전체"&&d.region!==fRegion) return false;
+    if(fGrace!=="전체"&&d.grace_bucket!==fGrace) return false;
+    if(q){ const hay=(d.name+' '+d.region+' '+(d.nearby||'')+' '+(d.note||'')+' '+(d.location||'')).toLowerCase(); if(!hay.includes(q)) return false; }
+    return true;
+  });
+  arr.sort((a,b)=>{
+    if(sortBy==="graceDesc") return graceSortVal(b)-graceSortVal(a);
+    if(sortBy==="graceAsc") return graceSortVal(a)-graceSortVal(b);
+    if(sortBy==="rating") return (b.rating||0)-(a.rating||0);
+    if(sortBy==="region") return regions.indexOf(a.region)-regions.indexOf(b.region)||a.name.localeCompare(b.name);
+    return 0;
+  });
+  return arr;
+}
+
+function highlightCard(id){
+  document.querySelectorAll('.card').forEach(c=>c.classList.toggle('active',+c.dataset.id===id));
+  const card=document.querySelector('.card[data-id="'+id+'"]');
+  if(card) card.scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+function ratingBlock(d){
+  const fmt=v=>v==null?'-':v.toFixed(v%1?1:0);
+  const subs=SUBR.map(([k,lab])=>'<span class="sub">'+lab+' <b>'+fmt(d[k])+'</b></span>').join('<span class="sep">·</span>');
+  return '<div class="rate"><span class="rk">총평점</span>'+
+    '<span class="rbig">'+(d.rating!=null?d.rating.toFixed(1):'-')+'</span><span class="rmax">/10</span>'+
+    '<span class="rsub">('+subs+')</span></div>';
+}
+
+function render(){
+  const arr=filtered();
+  document.getElementById('count').textContent=arr.length+' / '+DATA.length+'곳';
+  const shown=new Set(arr.map(d=>d.id));
+  DATA.forEach(d=>{
+    if(shown.has(d.id)){ if(!map.hasLayer(markers[d.id])) markers[d.id].addTo(map); }
+    else if(map.hasLayer(markers[d.id])) map.removeLayer(markers[d.id]);
+  });
+  const list=document.getElementById('list');
+  if(!arr.length){ list.innerHTML='<div class="empty">조건에 맞는 슈퍼차저가 없습니다.</div>'; return; }
+  list.innerHTML=arr.map(d=>{
+    const b=BUCKETS[d.grace_bucket]||BUCKETS["기타"];
+    let pkrows='';
+    if(d.fee_after) pkrows+='<div class="pkrow"><span class="k">이후요금</span><span class="v">'+esc(d.fee_after)+'</span></div>';
+    if(d.daily_max) pkrows+='<div class="pkrow"><span class="k">일 최대</span><span class="v">'+esc(d.daily_max)+'</span></div>';
+    if(d.free_cond)  pkrows+='<div class="pkrow"><span class="k">무료조건</span><span class="v">'+esc(d.free_cond)+'</span></div>';
+    const vlink=(url,txt)=>url?'<a class="vlink" href="'+esc(url)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">▶ '+txt+'</a>':'';
+    let specs='';
+    specs+='<div class="spec"><span class="sk">⚡ 충전속도</span><span class="sv">'+esc(d.speed||'-')+'</span></div>';
+    specs+='<div class="spec"><span class="sk">🅿 스톨</span><span class="sv">'+(d.stalls?d.stalls+'기':'-')+'</span></div>';
+    specs+='<div class="spec wide"><span class="sk">📍 진입 위치 '+vlink(d.location_url,'진입영상')+'</span><span class="sv">'+esc(d.location||'-')+'</span></div>';
+    if(d.nearby||d.nearby_url) specs+='<div class="spec wide"><span class="sk">🏬 주변시설 '+vlink(d.nearby_url,'주변영상')+'</span><span class="sv">'+esc(d.nearby||'-')+'</span></div>';
+    return '<div class="card" data-id="'+d.id+'" style="border-left-color:'+b.hex+'">'+
+      '<div class="top"><span class="nm">'+esc(d.name)+'</span><span class="rg">'+esc(d.region)+'</span></div>'+
+      '<div class="parkbox"><div class="grace"><span class="lab">무료회차</span>'+
+        '<span class="val" style="color:'+b.hex+'">'+esc(d.grace_label)+'</span>'+
+        '<span class="tag" style="background:'+b.hex+'">'+esc(d.grace_bucket)+'</span></div>'+
+        (pkrows?'<div class="pk">'+pkrows+'</div>':'')+'</div>'+
+      '<div class="specs">'+specs+'</div>'+
+      ratingBlock(d)+
+      (d.note?'<div class="note"><div class="nk">💬 코멘트</div><div class="nv">'+esc(d.note)+'</div></div>':'')+
+    '</div>';
+  }).join('');
+  list.querySelectorAll('.card').forEach(card=>{
+    const id=+card.dataset.id;
+    card.onclick=()=>{ const d=DATA.find(x=>x.id===id); map.flyTo([d.lat,d.lng],14,{duration:.6}); markers[id].openPopup(); highlightCard(id);
+      if(window.innerWidth<=820){ vt.querySelector('[data-v=map]').click(); } };
+  });
+}
+render();
+</script>
+</body>
+</html>
